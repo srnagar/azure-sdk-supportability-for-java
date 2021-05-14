@@ -96,3 +96,5 @@ scalastyle-output.xml
 # Emacs #
 
 #changebundle.txt#
+
+.mvn
