@@ -1,0 +1,50 @@
+on: [push]
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@master
+    
+    - uses: azure/docker-login@v1
+      with:
+        login-server: acrux.azurecr.io
+        username: ${{ secrets.acr_acrux_username }}
+        password: ${{ secrets.acr_acrux_password }}
+    
+    - name: Build and push image to ACR
+      id: build-image
+      run: |
+        docker build "$GITHUB_WORKSPACE/azsdk-supportability-eventhubs" -f  "azsdk-supportability-eventhubs/Dockerfile" -t acrux.azurecr.io/srnagarakscluster:${{ github.sha }} --label dockerfile-path=azsdk-supportability-eventhubs/Dockerfile
+        docker push acrux.azurecr.io/srnagarakscluster:${{ github.sha }}
+    
+    - uses: azure/k8s-set-context@v1
+      with:
+         kubeconfig: ${{ secrets.aks_srnagarakscluster_kubeConfig }}
+      id: login
+    
+    - name: Create namespace
+      run: |
+        namespacePresent=`kubectl get namespace | grep srnagar-aks-clustera0ce | wc -l`
+        if [ $namespacePresent -eq 0 ]
+        then
+            echo `kubectl create namespace srnagar-aks-clustera0ce`
+        fi
+
+    - uses: azure/k8s-create-secret@v1
+      with:
+        namespace: srnagar-aks-clustera0ce
+        container-registry-url: acrux.azurecr.io
+        container-registry-username: ${{ secrets.acr_acrux_username }}
+        container-registry-password: ${{ secrets.acr_acrux_password }}
+        secret-name: srnagarakscldockerauth
+       
+    - uses: azure/k8s-deploy@v1.2
+      with:
+        namespace: srnagar-aks-clustera0ce
+        manifests: |
+          manifests/deployment.yml
+          manifests/service.yml
+        images: |
+          acrux.azurecr.io/srnagarakscluster:${{ github.sha }}
+        imagepullsecrets: |
+          srnagarakscldockerauth
